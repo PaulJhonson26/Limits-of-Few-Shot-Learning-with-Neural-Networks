@@ -118,7 +118,7 @@ def NgramModel(Dtrain, Dlabels, iter):
     ### Converting for LR input ###
     Dtrain = np.concatenate((np.array(DtrainPos), np.array(DtrainNeg)), axis=0)
     Dtrain = Dtrain.tolist()
-    vectorizer1 = CountVectorizer(ngram_range=(1, 7))
+    vectorizer1 = CountVectorizer(ngram_range=(1, 5))
 
     for i in range(iter):
         vectorizer1.fit(Dtrain)
