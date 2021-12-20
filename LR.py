@@ -11,11 +11,25 @@ nltk.download('stopwords')
 from nltk.tokenize import word_tokenize
 from nltk.util import ngrams
 from sklearn.feature_extraction.text import TfidfVectorizer
+from gensim.models import KeyedVectors
+from gensim.scripts.glove2word2vec import glove2word2vec
+import os
+from sklearn.metrics import f1_score
+
+# load the Stanford GloVe model
+
 
 def main():
     Dtrain = open("TrainingData", 'r')
     Dlabels = open("TrainingLabels", 'r')
     Dlabels= np.loadtxt(Dlabels, delimiter="\n")
+    ### Glove ###
+    glove_filename = 'glove.6B.50d.txt'
+    # Variable for data directory
+    glove_path = os.path.abspath(glove_filename)
+    word2vec_output_file = glove_filename + '.word2vec'
+    glove2word2vec(glove_path, word2vec_output_file)
+    model = KeyedVectors.load_word2vec_format(word2vec_output_file, binary=False)
 
     ######### Preprocessing Steps ##############
 
@@ -24,23 +38,39 @@ def main():
             ### Depunctuating ###
     Dtrain = depunctuate(Dtrain)
             ### Removing Stopwords ###
-    Dtrain  = removeStop(Dtrain)  ###Btw might be fixable but this thing takes ages!
+#    Dtrain  = removeStop(Dtrain)  ###Btw might be fixable but this thing takes ages!
             ### Lemmatizing ###
-    Dtrain  = Lemma(Dtrain)
+ #   Dtrain  = Lemma(Dtrain)
             ### Creating Ngrams ###
-    Ngrams = createNgrams(Dtrain)
+ #   Ngrams = createNgrams(Dtrain)
             ### Splitting Dtrain ###
     DtrainPos = splitData(1, Dtrain, Dlabels)
+    print(DtrainPos)
     DtrainNeg = splitData(0, Dtrain, Dlabels)
     ######## Converting for LR input ########
             ### Ngrams ###
-    Xtrain, Xtest, Ytrain, Ytest = NgramModel(Dtrain, Dlabels, 200) #Either Use Ngram or TFIDF not both
+    Xtrain, Xtest, Ytrain, Ytest = NgramModel(Dtrain, Dlabels, 3) #Either Use Ngram or TFIDF not both
             ### TFIDFing
 #    Xtrain, Xtest, Ytrain, Ytest = tfidfModel(Dtrain, Dlabels, 200)
+            ### Glove ###
+    # word_to_index, index_to_word, word_to_vec_map = read_glove_vecs(glove_filename)
+    # vectorizer = Word2VecVectorizer(model)
+    #
+    # Xtrain, Xtest, Ytrain, Ytest = train_test_split(Dtrain, [1] * len(DtrainPos) + [0] * len(DtrainNeg), test_size=0.50)
+    # for i, sent in enumerate(Xtrain):
+    #     avg = sentenceAvg(sent, word_to_vec_map)
+    #     #print(avg)
+    #     Xtrain[i] = avg
+    # #Get the sentence embeddings for the train dataset
+    # #Xtrain = vectorizer.fit_transform(Xtrain)
+    # Get the sentence embeddings for the test dataset
+    # Xtest = vectorizer.transform(Xtest)
+            ### Glvoe End ###
     clf = LogisticRegression(random_state=0, max_iter=10000).fit(Xtrain, Ytrain)
     y_pred = clf.predict(Xtest)
 
     print('Final Logistic Regression Accuracy: %s' % accuracy_score(y_pred, Ytest))
+    print('Final Logistic Regression F1 score: %s' % f1_score(y_pred, Ytest))
 
 def lowerCase(StringArray):
     lowerArray = []
@@ -161,5 +191,76 @@ def tfidfModel(Dtrain, Dlabels, iter):
             BestX = [Xtrain, Xtest, Ytrain, Ytest]
             print('Logistic Regression Accuracy: %s' % accuracy_score(y_pred, Ytest))
     return BestX
+
+def sentenceAvg(sentence, wordVectorMap):
+    words = sentence.lower().split()
+    avg = np.zeros(50)
+    for w in words:
+        if w in wordVectorMap:
+            avg+= wordVectorMap[w]
+    avg = avg/ len(words)
+    return avg
+
+
+def read_glove_vecs(glove_file):
+    with open(glove_file, encoding="utf8") as f:
+        words = set()
+        word_to_vec_map = {}
+        for line in f:
+            line = line.strip().split()
+            curr_word = line[0]
+            words.add(curr_word)
+            word_to_vec_map[curr_word] = np.array(line[1:], dtype=np.float64)
+
+        i = 1
+        words_to_index = {}
+        index_to_words = {}
+        for w in sorted(words):
+            words_to_index[w] = i
+            index_to_words[i] = w
+            i = i + 1
+    return words_to_index, index_to_words, word_to_vec_map
+class Word2VecVectorizer:
+  def __init__(self, model):
+    print("Loading in word vectors...")
+    self.word_vectors = model
+    print("Finished loading in word vectors")
+
+  def fit(self, data):
+    pass
+
+  def transform(self, data):
+    # determine the dimensionality of vectors
+    v = self.word_vectors.get_vector('king')
+    self.D = v.shape[0]
+
+    X = np.zeros((len(data), self.D))
+    n = 0
+    emptycount = 0
+    for sentence in data:
+      tokens = sentence.split()
+      vecs = []
+      m = 0
+      for word in tokens:
+        try:
+          # throws KeyError if word not found
+          vec = self.word_vectors.get_vector(word)
+          vecs.append(vec)
+          m += 1
+        except KeyError:
+          pass
+      if len(vecs) > 0:
+        vecs = np.array(vecs)
+        X[n] = vecs.mean(axis=0)
+      else:
+        emptycount += 1
+      n += 1
+    print("Numer of samples with no words found: %s / %s" % (emptycount, len(data)))
+    return X
+
+
+  def fit_transform(self, data):
+    self.fit(data)
+    return self.transform(data)
 if __name__ == "__main__":
     main()
